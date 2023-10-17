@@ -1,0 +1,123 @@
+stages:
+  - build
+  - code_style_test
+  - integration_test
+  - deploy
+
+after_script:
+  - chmod +x $TELBOT_SCRIPT_DIR/$TELBOT_SCRIPT_NAME
+  - bash $TELBOT_SCRIPT_DIR/$TELBOT_SCRIPT_NAME $CI_JOB_STATUS
+
+variables:
+  CAT_BINARY_NAME: my_cat
+  GREP_BINARY_NAME: my_grep
+  DEPLOY_SCRIPT_NAME: deploy_script.sh
+  TELBOT_SCRIPT_NAME: telbot_script.sh
+  CAT_DIR: $CI_PROJECT_DIR/src/SimpleBashUtils/cat
+  GREP_DIR: $CI_PROJECT_DIR/src/SimpleBashUtils/grep
+  DEPLOY_SCRIPT_DIR: $CI_PROJECT_DIR/src/
+  DEPLOY_DIR: /usr/local/bin
+  TELBOT_SCRIPT_DIR: $CI_PROJECT_DIR/src/
+
+build_cat:
+  stage: build
+  script:
+    - echo "The test message build-cat"
+    - cd $CAT_DIR
+    - make my_cat
+    - mkdir binaries
+    - cp $CAT_BINARY_NAME ./binaries
+    - cd $CI_PROJECT_DIR
+  artifacts:
+    name: "$CI_JOB_NAME"
+    paths:
+      - $CAT_DIR/binaries/
+    expire_in: 30d
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+build_grep:
+  stage: build
+  script:
+    - echo "The test message build-grep"
+    - cd $GREP_DIR
+    - make my_grep
+    - mkdir binaries
+    - cp $GREP_BINARY_NAME ./binaries
+    - cd $CI_PROJECT_DIR
+  artifacts:
+    name: "$CI_JOB_NAME"
+    paths:
+      - $GREP_DIR/binaries/
+    expire_in: 30d
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+cat_code_style_test:
+  stage: code_style_test
+  script:
+    - cd $CAT_DIR
+    - cp ../../../materials/linters/.clang-format .clang-format
+    - CLANG_FORMAT=$(clang-format -n *my*.c *my*.h 2>&1)
+    - rm .clang-format
+    - if [ -n "${CLANG_FORMAT}" ]; then echo "${CLANG_FORMAT}" && exit 1; fi
+  needs:
+    - build_cat
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+grep_code_style_test:
+  stage: code_style_test
+  script:
+    - cd $GREP_DIR
+    - cp ../../../materials/linters/.clang-format .clang-format
+    - CLANG_FORMAT=$(clang-format -n *my*.c *my*.h 2>&1)
+    - rm .clang-format
+    - if [ -n "${CLANG_FORMAT}" ]; then echo "${CLANG_FORMAT}" && exit 1; fi
+  needs:
+    - build_grep
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+cat_integretion_test:
+  stage: integration_test
+  script:
+    - cd $CAT_DIR
+    - cp $CAT_DIR/binaries/my_cat $CAT_DIR/my_cat
+    - bash t_cat.sh
+    - rm $CAT_DIR/my_cat
+  needs:
+    - build_cat
+    - cat_code_style_test
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+grep_integretion_test:
+  stage: integration_test
+  script:
+    - cd $GREP_DIR
+    - cp $GREP_DIR/binaries/my_grep $GREP_DIR/my_grep
+    - bash t_grep.sh
+    - rm $GREP_DIR/my_grep
+  needs:
+    - build_grep
+    - grep_code_style_test
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
+deploy-dev:
+  stage: deploy
+  before_script:
+  script:
+    - chmod +x $DEPLOY_SCRIPT_DIR/$DEPLOY_SCRIPT_NAME
+    - bash $DEPLOY_SCRIPT_DIR/$DEPLOY_SCRIPT_NAME
+  needs:
+    - build_cat
+    - build_grep
+    - cat_code_style_test
+    - grep_code_style_test
+    - cat_integretion_test
+    - grep_integretion_test
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      when: manual
